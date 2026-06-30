@@ -70,7 +70,7 @@ docker run -p 8574:8574 book-store-server
 ## API Endpoints
 
 | Method | Endpoint | Description |
-----------------------------------------------------------
+|---|---|---|
 | GET | `/books/health` | Check if the server is running |
 | POST | `/book` | Add a new book |
 | GET | `/books/total` | Get the number of books |
