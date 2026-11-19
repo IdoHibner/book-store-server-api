@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import os
 import shutil
 import time
@@ -103,7 +103,7 @@ def success_response(result, status_code=200):
 
 
 def error_response(message, status_code):
-    return jsonify({"errorMessage": message}), status_code
+    return jsonify({"result": None, "errorMessage": message}), status_code
 
 
 def parse_required_int_query_param(param_name):
@@ -214,7 +214,7 @@ def create_book():
         log_books_error_if_needed(error_message, 409)
         return error_response(error_message, 409)
 
-    books_before_adding = len(book_store.books_by_id) - 1
+    books_before_adding = book_store.count_all_books() - 1
 
     books_logger.info(
         f"Creating new Book with Title [{title}]",
@@ -235,7 +235,12 @@ def get_book():
     if error_message is not None:
         return error_response(error_message, 400)
 
-    book = book_store.get_book_by_id(book_id)
+    persistence_method = request.args.get("persistenceMethod")
+
+    if persistence_method not in BookStore.VALID_PERSISTENCE_METHODS:
+        return error_response("Error: query parameter [persistenceMethod] must be POSTGRES or MONGO", 400)
+
+    book = book_store.get_book_by_id(book_id, persistence_method)
 
     if book is None:
         error_message = f"Error: no such Book with id {book_id}"

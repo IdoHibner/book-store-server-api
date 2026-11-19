@@ -1,14 +1,30 @@
-﻿from book import Book
+from book import Book
+import db_models
 
 class BookStore:
     VALID_GENRES = {"SCI_FI", "NOVEL", "HISTORY", "MANGA", "ROMANCE", "PROFESSIONAL"}
+    VALID_PERSISTENCE_METHODS = {"POSTGRES", "MONGO"}
+    WRITE_SOURCE = "POSTGRES"  # used for validations before writing to both DBs
 
     def __init__(self):
-        self.books_by_id = {}
-        self.next_book_id = 1
+        db_models.connect_databases()
+        # The DBs come pre-populated, so continue numbering after the highest existing id.
+        self.next_book_id = max(
+            db_models.REPOSITORIES["POSTGRES"].max_id(),
+            db_models.REPOSITORIES["MONGO"].max_id()
+        ) + 1
+
+    def get_repository(self, persistence_method):
+        if persistence_method not in self.VALID_PERSISTENCE_METHODS:
+            return None, f"Error: query parameter [persistenceMethod] must be POSTGRES or MONGO"
+
+        return db_models.REPOSITORIES[persistence_method], None
+
+    def count_all_books(self, persistence_method=WRITE_SOURCE):
+        return len(db_models.REPOSITORIES[persistence_method].get_all())
 
     def find_book_by_title(self, title):
-        for book in self.books_by_id.values():
+        for book in db_models.REPOSITORIES[self.WRITE_SOURCE].get_all():
             if book.title.lower() == title.lower():
                 return book
 
@@ -35,13 +51,13 @@ class BookStore:
         )
 
         assigned_id = self.next_book_id
-        self.books_by_id[assigned_id] = new_book
+        db_models.insert_book(new_book)
         self.next_book_id += 1
 
         return assigned_id, None
 
-    def get_book_by_id(self, book_id):
-        return self.books_by_id.get(book_id)
+    def get_book_by_id(self, book_id, persistence_method=WRITE_SOURCE):
+        return db_models.REPOSITORIES[persistence_method].get_by_id(book_id)
 
     def parse_int_filter(self, query_params, param_name):
         value = query_params.get(param_name)
@@ -69,6 +85,10 @@ class BookStore:
         return genres, None
 
     def filter_books(self, query_params):
+        repository, error_message = self.get_repository(query_params.get("persistenceMethod"))
+        if error_message is not None:
+            return None, error_message
+
         price_bigger_than, error_message = self.parse_int_filter(query_params, "price-bigger-than")
         if error_message is not None:
             return None, error_message
@@ -93,7 +113,7 @@ class BookStore:
 
         filtered_books = []
 
-        for book in self.books_by_id.values():
+        for book in repository.get_all():
             should_add_book = True
 
             if author_filter is not None:
@@ -168,7 +188,7 @@ class BookStore:
             return None, f"Error: price update for Book [{book_id}] must be a positive integer", 409
 
         old_price = book.price
-        book.price = new_price
+        db_models.update_price(book_id, new_price)
 
         return old_price, None, 200
 
@@ -178,8 +198,8 @@ class BookStore:
         if book is None:
             return None, f"Error: no such Book with id {book_id}", 404
 
-        del self.books_by_id[book_id]
+        db_models.delete_book(book_id)
 
-        books_left = len(self.books_by_id)
+        books_left = self.count_all_books()
 
         return books_left, None, 200
